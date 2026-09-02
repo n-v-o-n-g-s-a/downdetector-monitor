@@ -68,7 +68,7 @@ class DownDetectorMonitor:
             soup = BeautifulSoup(response.content, 'html.parser')
             
             reports_count = 0
-            report_elements = soup.find_all(string=lambda text: 'reports' in str(text).lower() if text)
+            report_elements = soup.find_all(string=lambda text: text and 'reports' in str(text).lower())
             if report_elements:
                 for elem in report_elements:
                     try:
