@@ -32,7 +32,7 @@ MONITORED_CARRIERS = {
 }
  
 NOTION_API_ENDPOINT = 'https://api.notion.com/v1'
-NOTION_API_VERSION = '2024-06-15'
+NOTION_API_VERSION = '2026-03-11'
  
 # Poll configuration
 POLL_INTERVAL = 60  # seconds between polls
