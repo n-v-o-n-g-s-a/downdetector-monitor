@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Carrier Status Monitor for Cityside Fiber NOC
-Actively polls Cogent, Lumen, and Microsoft status pages.
+Actively polls Cogent, Lumen, and Microsoft status pages/feeds.
 Logs incidents to Notion when outages are detected.
 """
  
@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Dict, Optional
 import requests
 from bs4 import BeautifulSoup
+import xml.etree.ElementTree as ET
  
 # Setup logging
 logging.basicConfig(
@@ -28,7 +29,7 @@ NOTION_DATABASE_ID = 'faf29e8b-81b9-495b-9c85-fb6746525f8d'
 MONITORED_CARRIERS = {
     'Cogent': 'http://status.cogentco.com',
     'Lumen': 'https://lumen.statuspage.io/',
-    'Microsoft': 'https://status.cloud.microsoft/'
+    'Microsoft': 'https://status.cloud.microsoft/api/feed/mac'
 }
  
 NOTION_API_ENDPOINT = 'https://api.notion.com/v1'
@@ -54,7 +55,7 @@ class CarrierStatusMonitor:
     def fetch_status_page(self, carrier: str, url: str) -> Optional[Dict]:
         """
         Fetch a carrier's status page and parse the status
-        Returns: {'status': 'operational'|'degraded'|'major', 'incidents': int, 'timestamp': str}
+        Returns: {'status': 'operational'|'degraded'|'major', 'timestamp': str}
         """
         try:
             headers = {
@@ -64,18 +65,18 @@ class CarrierStatusMonitor:
             response = requests.get(url, headers=headers, timeout=10)
             response.raise_for_status()
             
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # Parse based on carrier
-            status = 'operational'
-            incident_count = 0
-            
-            if 'cogent' in url.lower():
-                status = self._parse_cogent_status(soup)
-            elif 'lumen' in url.lower():
-                status = self._parse_lumen_status(soup)
-            elif 'microsoft' in url.lower():
-                status = self._parse_microsoft_status(soup)
+            # Microsoft uses RSS feed, others use HTML
+            if 'microsoft' in url.lower():
+                status = self._parse_microsoft_rss(response.text)
+            else:
+                soup = BeautifulSoup(response.content, 'html.parser')
+                
+                if 'cogent' in url.lower():
+                    status = self._parse_cogent_status(soup)
+                elif 'lumen' in url.lower():
+                    status = self._parse_lumen_status(soup)
+                else:
+                    status = 'operational'
             
             return {
                 'carrier': carrier,
@@ -90,7 +91,6 @@ class CarrierStatusMonitor:
     
     def _parse_cogent_status(self, soup: BeautifulSoup) -> str:
         """Parse Cogent status page"""
-        # Look for status indicators on the page
         status_text = soup.get_text().lower()
         
         if 'major' in status_text or 'outage' in status_text:
@@ -102,11 +102,9 @@ class CarrierStatusMonitor:
     
     def _parse_lumen_status(self, soup: BeautifulSoup) -> str:
         """Parse Lumen Statuspage.io status"""
-        # Statuspage.io uses specific CSS classes for status
         status_indicators = soup.find_all('span', class_='component-status')
         
         if not status_indicators:
-            # Fallback: check page text
             status_text = soup.get_text().lower()
             if 'major' in status_text or 'outage' in status_text:
                 return 'major'
@@ -114,7 +112,6 @@ class CarrierStatusMonitor:
                 return 'degraded'
             return 'operational'
         
-        # Check for any major incidents
         for indicator in status_indicators:
             text = indicator.get_text().lower()
             if 'major' in text or 'down' in text:
@@ -124,17 +121,26 @@ class CarrierStatusMonitor:
         
         return 'operational'
     
-    def _parse_microsoft_status(self, soup: BeautifulSoup) -> str:
-        """Parse Microsoft 365 status page"""
-        # Look for incident indicators
-        status_text = soup.get_text().lower()
+    def _parse_microsoft_rss(self, rss_content: str) -> str:
+        """Parse Microsoft RSS feed status"""
+        try:
+            root = ET.fromstring(rss_content)
+            
+            # Find the first item (most recent status)
+            for item in root.findall('.//item'):
+                status_elem = item.find('status')
+                if status_elem is not None:
+                    status_text = status_elem.text.lower()
+                    
+                    if 'outage' in status_text or 'majorserviceimpairment' in status_text:
+                        return 'major'
+                    elif 'degradation' in status_text or 'servicedenial' in status_text:
+                        return 'degraded'
+            
+            return 'operational'
         
-        if 'service degradation' in status_text or 'service incident' in status_text:
-            if 'critical' in status_text or 'major' in status_text:
-                return 'major'
-            else:
-                return 'degraded'
-        else:
+        except Exception as e:
+            logger.error(f"Error parsing Microsoft RSS: {e}")
             return 'operational'
     
     def check_existing_incident(self, carrier: str) -> Optional[str]:
