@@ -197,35 +197,51 @@ class CarrierStatusMonitor:
             else:
                 impact_level = 'Medium'
             
+            # Build title
+            title_text = f"{carrier} - {status.title()} Outage - {datetime.now().strftime('%b %d, %Y %I:%M %p')}"
+            
             payload = {
-                'parent': {'database_id': self.database_id},
+                'parent': {
+                    'database_id': self.database_id
+                },
                 'properties': {
                     'Name': {
                         'title': [
                             {
                                 'text': {
-                                    'content': f"{carrier} - {status.title()} Outage - {datetime.now().strftime('%b %d, %Y %I:%M %p')}"
+                                    'content': title_text
                                 }
                             }
                         ]
                     },
                     'Service Name': {
-                        'select': {'name': carrier}
+                        'select': {
+                            'name': carrier
+                        }
                     },
                     'Status': {
-                        'select': {'name': 'Active'}
+                        'select': {
+                            'name': 'Active'
+                        }
                     },
                     'Impact Level': {
-                        'select': {'name': impact_level}
+                        'select': {
+                            'name': impact_level
+                        }
                     },
                     'Incident Type': {
-                        'select': {'name': 'Network Outage'}
+                        'select': {
+                            'name': 'Network Outage'
+                        }
+                    },
+                    'Reports (24h)': {
+                        'number': 1
                     },
                     'Notes': {
                         'rich_text': [
                             {
                                 'text': {
-                                    'content': f"Auto-detected from {carrier} status page. Status: {status}."
+                                    'content': f"Auto-detected from status page. Status: {status}."
                                 }
                             }
                         ]
@@ -237,11 +253,14 @@ class CarrierStatusMonitor:
             }
             
             response = session.post(url, json=payload, timeout=10)
-            response.raise_for_status()
             
-            page_id = response.json()['id']
-            logger.info(f"✓ Logged {carrier} incident to Notion: {page_id}")
-            return True
+            if response.status_code in [200, 201]:
+                page_id = response.json().get('id')
+                logger.info(f"✓ Logged {carrier} incident to Notion: {page_id}")
+                return True
+            else:
+                logger.error(f"Error logging to Notion: {response.status_code} - {response.text}")
+                return False
         
         except Exception as e:
             logger.error(f"Error logging incident to Notion: {e}")
