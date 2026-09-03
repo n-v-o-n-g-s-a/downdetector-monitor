@@ -28,7 +28,7 @@ NOTION_DATABASE_ID = 'faf29e8b-81b9-495b-9c85-fb6746525f8d'
 MONITORED_CARRIERS = {
     'Cogent': 'http://status.cogentco.com',
     'Lumen': 'https://lumen.statuspage.io/',
-    'Microsoft': 'https://status.cloud.microsoft//'
+    'Microsoft': 'https://status.cloud.microsoft/'
 }
  
 NOTION_API_ENDPOINT = 'https://api.notion.com/v1'
