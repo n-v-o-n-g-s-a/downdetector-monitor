@@ -296,62 +296,59 @@ class CarrierStatusMonitor:
             logger.error(f"Error updating incident status: {e}")
             return False
     
-    def run_monitoring_cycle(self):
-        """Execute one full monitoring cycle"""
-        logger.info("=" * 60)
-        logger.info("Starting Carrier Status Monitoring Cycle")
-        logger.info("=" * 60)
+def run_monitoring_cycle(self):
+    """Execute one full monitoring cycle"""
+    logger.info("=" * 60)
+    logger.info("Starting Carrier Status Monitoring Cycle")
+    logger.info("=" * 60)
+    
+    for carrier, url in MONITORED_CARRIERS.items():
+        logger.info(f"\nChecking {carrier}...")
         
-        for carrier, url in MONITORED_CARRIERS.items():
-            logger.info(f"\nChecking {carrier}...")
+        # Fetch status from carrier's status page
+        status_data = self.fetch_status_page(carrier, url)
+        
+        if not status_data:
+            failure_counters[carrier] += 1
+            logger.warning(f"  ✗ Could not fetch {carrier} status. Failure count: {failure_counters[carrier]}")
             
-            # Fetch status from carrier's status page
-            status_data = self.fetch_status_page(carrier, url)
+            if failure_counters[carrier] >= FAILURE_THRESHOLD and not logged_incidents[carrier]:
+                logger.error(f"  🚨 {carrier} status check failed {FAILURE_THRESHOLD} times. Logging as incident.")
+                self.log_incident_to_notion(carrier, 'major')
+                logged_incidents[carrier] = True
+            continue
+        
+        status = status_data['status']
+        
+        # If status is not operational, it's an outage
+        if status != 'operational':
+            failure_counters[carrier] += 1
+            logger.warning(f"  ⚠️ {carrier} status: {status} (Failure count: {failure_counters[carrier]})")
             
-            if not status_data:
-                failure_counters[carrier] += 1
-                logger.warning(f"  ✗ Could not fetch {carrier} status. Failure count: {failure_counters[carrier]}")
-                
-                if failure_counters[carrier] >= FAILURE_THRESHOLD and not logged_incidents[carrier]:
-                    logger.error(f"  🚨 {carrier} status check failed {FAILURE_THRESHOLD} times. Logging as incident.")
-                    self.log_incident_to_notion(carrier, 'major')
+            # Only log if threshold reached and not already logged
+            if failure_counters[carrier] >= FAILURE_THRESHOLD and not logged_incidents[carrier]:
+                logger.error(f"  🚨 {carrier} has {status} outage. Logging to Notion.")
+                if self.log_incident_to_notion(carrier, status):
                     logged_incidents[carrier] = True
-                continue
-            
-            status = status_data['status']
-            
-            # If status is not operational, it's an outage
-            if status != 'operational':
-                failure_counters[carrier] += 1
-                logger.warning(f"  ⚠️ {carrier} status: {status} (Failure count: {failure_counters[carrier]})")
-                
-                # Check if incident already exists
-                existing_incident = self.check_existing_incident(carrier)
-                
-                # Only log if threshold reached and not already logged
-                if failure_counters[carrier] >= FAILURE_THRESHOLD and not logged_incidents[carrier]:
-                    logger.error(f"  🚨 {carrier} has {status} outage. Logging to Notion.")
-                    if self.log_incident_to_notion(carrier, status):
-                        logged_incidents[carrier] = True
-            
-            else:
-                # Status is operational
-                if failure_counters[carrier] > 0:
-                    logger.info(f"  ✅ {carrier} recovered to operational status.")
-                    
-                    # Mark as resolved if incident was logged
-                    if logged_incidents[carrier]:
-                        existing_incident = self.check_existing_incident(carrier)
-                        if existing_incident:
-                            self.update_incident_status(existing_incident, 'Resolved')
-                
-                failure_counters[carrier] = 0
-                logged_incidents[carrier] = False
-                logger.info(f"  ✓ {carrier} status: operational")
         
-        logger.info("\n" + "=" * 60)
-        logger.info("Monitoring cycle complete")
-        logger.info("=" * 60 + "\n")
+        else:
+            # Status is operational
+            if failure_counters[carrier] > 0:
+                logger.info(f"  ✅ {carrier} recovered to operational status.")
+                
+                # Mark as resolved if incident was logged
+                if logged_incidents[carrier]:
+                    existing_incident = self.check_existing_incident(carrier)
+                    if existing_incident:
+                        self.update_incident_status(existing_incident, 'Resolved')
+            
+            failure_counters[carrier] = 0
+            logged_incidents[carrier] = False
+            logger.info(f"  ✓ {carrier} status: operational")
+    
+    logger.info("\n" + "=" * 60)
+    logger.info("Monitoring cycle complete")
+    logger.info("=" * 60 + "\n")
  
  
 def main():
