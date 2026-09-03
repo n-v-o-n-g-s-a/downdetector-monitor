@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
  
 # Configuration
 NOTION_API_KEY = os.getenv('NOTION_API_KEY', 'your_notion_api_key_here')
-NOTION_DATABASE_ID = 'faf29e8b-81b9-495b-9c85-fb6746525f8d'
+NOTION_DATABASE_ID = 'c3e47faaa81b4852b1fd4b22bfe5a807'
  
 # Carriers to monitor
 MONITORED_CARRIERS = {
